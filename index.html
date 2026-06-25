@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Meteo RO — Vremea în România | ANM, Radar, Prognoză</title>
+<meta name="theme-color" content="#020617">
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { -webkit-tap-highlight-color: transparent }
+  html,body { height: 100% }
+  body { font-family: 'Outfit', system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:#020617; color:#e2e8f0; text-rendering: optimizeLegibility; }
+  .glass { backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+  .scrollbar-thin::-webkit-scrollbar{ width:6px; height:6px } .scrollbar-thin::-webkit-scrollbar-thumb{ background:rgba(148,163,184,.25); border-radius:999px }
+  .scrollbar-thin{ scrollbar-width: thin; scrollbar-color: rgba(148,163,184,.25) transparent; }
+  .chip { padding:.55rem .9rem; border-radius:9999px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08); font-size:.875rem; line-height:1; transition:.2s; white-space:nowrap }
+  .chip:hover{ background:rgba(255,255,255,.1); transform: translateY(-1px) }
+  .chip.active{ background:rgba(56,189,248,.15); border-color:rgba(56,189,248,.35); color:#7dd3fc }
+  .card { background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03)); border:1px solid rgba(255,255,255,.08); }
+  .shimmer{ position:relative; overflow:hidden } .shimmer::after{ content:''; position:absolute; inset:0; background:linear-gradient(110deg, transparent 0%, rgba(255,255,255,.08) 40%, transparent 80%); transform:translateX(-100%); animation:sh 1.8s infinite } @keyframes sh{to{transform:translateX(200%)}}
+  .no-scrollbar::-webkit-scrollbar{display:none} .no-scrollbar{-ms-overflow-style:none;scrollbar-width:none}
+</style>
+</head>
+<body class="antialiased selection:bg-cyan-400/30 selection:text-cyan-100">
+<div class="fixed inset-0 -z-10">
+  <div class="absolute -top-32 -right-32 h-[500px] w-[500px] rounded-full bg-cyan-500/20 blur-[140px]"></div>
+  <div class="absolute top-1/3 -left-40 h-[480px] w-[480px] rounded-full bg-indigo-600/20 blur-[140px]"></div>
+  <div class="absolute bottom-0 right-1/4 h-[320px] w-[320px] rounded-full bg-blue-500/15 blur-[120px]"></div>
+</div>
+
+<header class="sticky top-0 z-40 border-b border-white/5 bg-slate-950/70 glass">
+  <div class="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 h-[68px] flex items-center gap-3">
+    <div class="flex items-center gap-2.5">
+      <div class="h-9 w-9 rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 grid place-items-center shadow-lg shadow-cyan-900/30">
+        <i data-lucide="cloud-sun" class="w-5 h-5 text-white"></i>
+      </div>
+      <div class="leading-tight">
+        <div class="font-semibold tracking-wide">Meteo RO</div>
+        <div class="text-[11px] text-slate-400 -mt-1">ANM · Open-Meteo</div>
+      </div>
+    </div>
+
+    <div class="flex-1 flex justify-center">
+      <div class="relative w-full max-w-[640px]">
+        <div class="relative group">
+          <i data-lucide="search" class="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-cyan-300"></i>
+          <input id="search-input" type="text" inputmode="search" autocomplete="off" placeholder="Caută oraș în România..." class="w-full h-11 pl-10 pr-11 rounded-2xl bg-white/5 border border-white/10 outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-400/40 text-[15px] placeholder-slate-500">
+          <button id="clear-search" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-xl hover:bg-white/10 hidden">
+            <i data-lucide="x" class="w-4 h-4 text-slate-400"></i>
+          </button>
+        </div>
+        <div id="suggestions" class="absolute z-50 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 glass shadow-2xl hidden max-h-[340px] overflow-y-auto scrollbar-thin"></div>
+      </div>
+    </div>
+
+    <div class="flex items-center gap-1.5">
+      <button id="locate-btn" class="h-10 w-10 grid place-items-center rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition" title="Locația mea">
+        <i data-lucide="locate-fixed" class="w-5 h-5"></i>
+      </button>
+      <button id="fav-toggle" class="h-10 w-10 grid place-items-center rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 active:scale-95 transition" title="Favorite">
+        <i data-lucide="star" class="w-5 h-5"></i>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-[1440px] px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+  <div class="lg:hidden mb-5">
+    <div class="flex items-center justify-between mb-2">
+      <p class="text-xs uppercase tracking-widest text-slate-400">Recente</p>
+      <button id="show-fav-mobile" class="text-xs text-cyan-300">Favorite ★</button>
+    </div>
+    <div id="recent-list-mobile" class="flex gap-2 overflow-x-auto no-scrollbar pb-1"></div>
+  </div>
+
+  <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+    <div class="xl:col-span-8 2xl:col-span-9 space-y-6">
+      <section id="current-card" class="relative overflow-hidden rounded-[32px] card p-6 sm:p-8 lg:p-10 shimmer">
+        <div class="absolute inset-0 opacity-40 pointer-events-none" id="current-bg"></div>
+        <div class="relative flex flex-col sm:flex-row sm:items-center gap-6">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start gap-3">
+              <h1 id="city-name" class="text-[28px] sm:text-[34px] font-semibold leading-tight truncate">București</h1>
+              <span id="country-badge" class="mt-1.5 shrink-0 text-[11px] px-2 py-1 rounded-full bg-white/10 border border-white/10 text-slate-300">RO</span>
+            </div>
+            <p id="date-time" class="mt-1 text-slate-300 text-[14px]">—</p>
+            <div class="mt-6 flex items-end gap-5">
+              <div id="temp-big" class="text-[72px] sm:text-[88px] font-thin tracking-tighter leading-none">--°</div>
+              <div class="pb-2">
+                <div id="condition" class="text-[18px] sm:text-[20px] font-medium">—</div>
+                <div id="high-low" class="text-slate-300 text-[14px] mt-0.5">Max —° • Min —°</div>
+                <div class="flex items-center gap-2 mt-2 text-[13px] text-slate-300">
+                  <i data-lucide="thermometer-sun" class="w-4 h-4"></i>
+                  <span>Resimțite <b id="feels-like" class="text-slate-100">--°</b></span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="shrink-0">
+            <div id="current-icon" class="w-[120px] h-[120px] sm:w-[140px] sm:h-[140px] grid place-items-center">
+              <i data-lucide="cloud" class="w-24 h-24 text-white/90"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="relative mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="rounded-2xl bg-black/20 border border-white/10 p-4">
+            <div class="flex items-center gap-2 text-slate-300 text-xs"><i data-lucide="droplets" class="w-4 h-4"></i>Umiditate</div>
+            <div id="humidity" class="text-2xl font-semibold mt-1">--%</div>
+          </div>
+          <div class="rounded-2xl bg-black/20 border border-white/10 p-4">
+            <div class="flex items-center gap-2 text-slate-300 text-xs"><i data-lucide="wind" class="w-4 h-4"></i>Vânt</div>
+            <div class="flex items-baseline gap-2"><div id="wind" class="text-2xl font-semibold">--</div><span class="text-sm text-slate-400">km/h</span></div>
+            <div class="text-[12px] text-slate-400 flex items-center gap-1 mt-1"><i id="wind-dir" data-lucide="navigation" class="w-3.5 h-3.5"></i><span id="wind-txt">—</span></div>
+          </div>
+          <div class="rounded-2xl bg-black/20 border border-white/10 p-4">
+            <div class="flex items-center gap-2 text-slate-300 text-xs"><i data-lucide="gauge" class="w-4 h-4"></i>Presiune</div>
+            <div id="pressure" class="text-2xl font-semibold mt-1">--</div>
+            <div class="text-[12px] text-slate-400 -mt-0.5">hPa</div>
+          </div>
+          <div class="rounded-2xl bg-black/20 border border-white/10 p-4">
+            <div class="flex items-center gap-2 text-slate-300 text-xs"><i data-lucide="umbrella" class="w-4 h-4"></i>Precipitații</div>
+            <div id="precip" class="text-2xl font-semibold mt-1">--</div>
+            <div class="text-[12px] text-slate-400 -mt-0.5">mm · azi</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-[28px] card p-5 sm:p-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-[17px] font-semibold flex items-center gap-2"><i data-lucide="clock-3" class="w-4 h-4 text-cyan-300"></i> Următoarele 24 ore</h2>
+          <div class="text-xs text-slate-400">Prognoză orară</div>
+        </div>
+        <div class="mt-4 h-[110px] relative">
+          <canvas id="hourlyChart"></canvas>
+        </div>
+        <div id="hourly-scroll" class="mt-4 flex gap-2.5 overflow-x-auto no-scrollbar scrollbar-thin pb-1 -mx-1 px-1"></div>
+      </section>
+
+      <section class="rounded-[28px] card p-5 sm:p-6">
+        <div class="flex items-center justify-between">
+          <h2 class="text-[17px] font-semibold flex items-center gap-2"><i data-lucide="calendar-days" class="w-4 h-4 text-cyan-300"></i> 7 zile</h2>
+          <div class="text-xs text-slate-400">Prognoză zilnică detaliată</div>
+        </div>
+        <div id="daily-list" class="mt-2 divide-y divide-white/5"></div>
+      </section>
+
+      <section class="rounded-[28px] card p-5 sm:p-6">
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-[17px] font-semibold flex items-center gap-2">
+            <span class="relative flex h-2.5 w-2.5"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span></span>
+            Integrare ANM & Radar
+          </h2>
+          <div class="flex items-center gap-2">
+            <a href="https://www.meteoromania.ro/avertizari/" target="_blank" rel="noopener" class="text-xs px-3 py-1.5 rounded-xl bg-red-500/15 hover:bg-red-500/25 border border-red-500/25 text-red-200 transition">meteoromania.ro</a>
+            <button id="refresh-anm" class="h-7 w-7 grid place-items-center rounded-lg bg-white/5 hover:bg-white/10 border border-white/10"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i></button>
+          </div>
+        </div>
+
+        <div class="mt-4 grid lg:grid-cols-5 gap-4">
+          <div class="lg:col-span-3 rounded-2xl overflow-hidden border border-white/10 bg-black/30">
+            <div class="flex items-center justify-between px-3 py-2 bg-white/5 border-b border-white/10">
+              <div class="text-[13px] font-medium flex items-center gap-1.5"><i data-lucide="radar" class="w-4 h-4 text-cyan-300"></i>Radar Meteo</div>
+              <div class="text-[11px] text-slate-400">Windy.com</div>
+            </div>
+            <div class="aspect-[16/10] w-full">
+              <iframe class="w-full h-full" loading="lazy" src="https://embed.windy.com/embed2.html?lat=45.943&lon=24.966&detailLat=45.943&detailLon=24.966&zoom=6&level=surface&overlay=radar&product=radar&menu=&message=true&marker=&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=km%2Fh&metricTemp=%C2%B0C&radarRange=-1" frameborder="0"></iframe>
+            </div>
+          </div>
+          <div class="lg:col-span-2 rounded-2xl border border-white/10 bg-black/20 p-4 flex flex-col">
+            <div class="text-[13px] font-medium flex items-center gap-1.5"><i data-lucide="siren" class="w-4 h-4 text-amber-300"></i>Avertizări oficiale ANM</div>
+            <p class="mt-1.5 text-[13px] text-slate-300 leading-snug">Coduri emise de Administrația Națională de Meteorologie. Se actualizează automat.</p>
+            <div id="anm-warnings" class="mt-3 space-y-2.5 flex-1">
+              <div class="animate-pulse h-16 rounded-xl bg-white/5 border border-white/5"></div>
+              <div class="animate-pulse h-16 rounded-xl bg-white/5 border border-white/5"></div>
+            </div>
+            <div class="mt-3 flex gap-2">
+              <a href="https://www.meteoromania.ro/harti/" target="_blank" class="flex-1 text-center text-[13px] py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10">Hărți ANM</a>
+              <a href="https://www.meteoalarm.org/ro/" target="_blank" class="flex-1 text-center text-[13px] py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/25 text-amber-200">Meteoalarm RO</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <aside class="xl:col-span-4 2xl:col-span-3 space-y-6">
+      <section class="rounded-[28px] card p-5">
+        <div class="flex items-center justify-between">
+          <h3 class="font-semibold flex items-center gap-2"><i data-lucide="star" class="w-4 h-4 text-amber-300"></i> Favorite</h3>
+          <button id="manage-fav" class="text-xs text-slate-400 hover:text-slate-200">Gestionează</button>
+        </div>
+        <div id="fav-list" class="mt-3 flex flex-wrap gap-2"></div>
+        <div class="mt-4">
+          <p class="text-xs uppercase tracking-widest text-slate-500 mb-2">Recente</p>
+          <div id="recent-list" class="flex flex-wrap gap-2"></div>
+        </div>
+      </section>
+
+      <section class="rounded-[28px] card p-5">
+        <h3 class="font-semibold flex items-center gap-2"><i data-lucide="wind" class="w-4 h-4 text-cyan-300"></i> Calitatea aerului</h3>
+        <div class="mt-4 flex items-center gap-4">
+          <div class="relative w-20 h-20">
+            <svg viewBox="0 0 100 100" class="w-20 h-20 -rotate-90">
+              <circle cx="50" cy="50" r="42" stroke="rgba(255,255,255,.08)" stroke-width="10" fill="none"/>
+              <circle id="aqi-ring" cx="50" cy="50" r="42" stroke="#22d3ee" stroke-width="10" fill="none" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="200"/>
+            </svg>
+            <div class="absolute inset-0 grid place-items-center">
+              <div class="text-center">
+                <div id="aqi-value" class="text-2xl font-semibold leading-none">--</div>
+                <div class="text-[10px] text-slate-400 -mt-0.5">US AQI</div>
+              </div>
+            </div>
+          </div>
+          <div class="flex-1">
+            <div id="aqi-status" class="text-[15px] font-medium">—</div>
+            <div class="mt-2 grid grid-cols-2 gap-2 text-[12px]">
+              <div class="rounded-xl bg-black/20 border border-white/10 p-2.5"><div class="text-slate-400">PM2.5</div><div id="pm25" class="font-semibold text-[15px]">--</div></div>
+              <div class="rounded-xl bg-black/20 border border-white/10 p-2.5"><div class="text-slate-400">PM10</div><div id="pm10" class="font-semibold text-[15px]">--</div></div>
+            </div>
+          </div>
+        </div>
+        <p class="mt-3 text-[12px] text-slate-400">Sursă: Open-Meteo Air Quality (CAMS). Valorile sunt orientative.</p>
+      </section>
+
+      <section class="rounded-[28px] card p-5">
+        <h3 class="font-semibold flex items-center gap-2"><i data-lucide="sun-medium" class="w-4 h-4 text-amber-300"></i> Soare & Lună</h3>
+        <div class="mt-4">
+          <div class="relative h-[86px]">
+            <svg viewBox="0 0 300 100" class="w-full h-full">
+              <defs><linearGradient id="g1" x1="0" x2="1"><stop offset="0%" stop-color="#f59e0b" stop-opacity=".1"/><stop offset="100%" stop-color="#f59e0b" stop-opacity=".6"/></linearGradient></defs>
+              <path d="M10 90 A140 80 0 0 1 290 90" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="6"/>
+              <path id="sun-arc" d="M10 90 A140 80 0 0 1 290 90" fill="none" stroke="url(#g1)" stroke-width="6" stroke-linecap="round" stroke-dasharray="440" stroke-dashoffset="220"/>
+              <circle id="sun-dot" cx="150" cy="20" r="5" fill="#fbbf24" />
+            </svg>
+            <div class="absolute inset-0 flex items-end justify-between px-2 pb-1 text-[12px] text-slate-300">
+              <div class="flex items-center gap-1"><i data-lucide="sunrise" class="w-3.5 h-3.5"></i><span id="sunrise">--:--</span></div>
+              <div class="text-center"><div class="text-[11px] uppercase tracking-widest text-slate-500">Lumina zilei</div><div id="day-length" class="font-medium text-slate-200 -mt-0.5">--h --m</div></div>
+              <div class="flex items-center gap-1"><i data-lucide="sunset" class="w-3.5 h-3.5"></i><span id="sunset">--:--</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-[28px] card p-5">
+        <h3 class="font-semibold flex items-center gap-2"><i data-lucide="map-pin" class="w-4 h-4 text-cyan-300"></i> Orașe populare</h3>
+        <div id="popular-cities" class="mt-3 grid grid-cols-2 gap-2"></div>
+      </section>
+    </aside>
+  </div>
+
+  <p class="mt-10 text-center text-[12px] text-slate-500">Date meteo © Open-Meteo.com · Avertizări © ANM / Meteoalarm · Design Meteo RO</p>
+</main>
+
+<div id="toast" class="fixed left-1/2 -translate-x-1/2 bottom-5 z-[100] hidden">
+  <div class="px-4 py-2.5 rounded-2xl bg-slate-900 border border-white/15 shadow-2xl text-[14px] flex items-center gap-2">
+    <i data-lucide="info" class="w-4 h-4 text-cyan-300"></i><span id="toast-msg">—</span>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lucide@latest"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const fmt = new Intl.DateTimeFormat('ro-RO', { weekday:'long', day:'2-digit', month:'long', hour:'2-digit', minute:'2-digit' });
+const shortFmt = new Intl.DateTimeFormat('ro-RO', { hour:'2-digit', minute:'2-digit' });
+
+let state = { name:'București', lat:44.4268, lon:26.1025, country:'RO' };
+let recent = JSON.parse(localStorage.getItem('meteo_recent')||'[]');
+let fav = JSON.parse(localStorage.getItem('meteo_fav')||'[]');
+let hourlyChart;
+
+const weatherCodes = {
+  0:{t:'Senin', i:'sun'},1:{t:'Predominant senin', i:'sun'},2:{t:'Parțial noros', i:'cloud-sun'},3:{t:'Înnorat', i:'cloud'},
+  45:{t:'Ceață', i:'cloud-fog'},48:{t:'Ceață densă', i:'cloud-fog'},
+  51:{t:'Burniță slabă', i:'cloud-drizzle'},53:{t:'Burniță', i:'cloud-drizzle'},55:{t:'Burniță moderată', i:'cloud-drizzle'},
+  56:{t:'Burniță înghețată', i:'cloud-drizzle'},57:{t:'Burniță înghețată', i:'cloud-drizzle'},
+  61:{t:'Ploaie slabă', i:'cloud-rain'},63:{t:'Ploaie', i:'cloud-rain'},65:{t:'Ploaie puternică', i:'cloud-rain'},
+  66:{t:'Ploaie înghețată', i:'cloud-rain'},67:{t:'Ploaie înghețată', i:'cloud-rain'},
+  71:{t:'Ninsoare slabă', i:'snowflake'},73:{t:'Ninsoare', i:'snowflake'},75:{t:'Ninsoare abundentă', i:'snowflake'},77:{t:'Ninsoare grăunțoasă', i:'snowflake'},
+  80:{t:'Averse slabe', i:'cloud-rain'},81:{t:'Averse', i:'cloud-rain'},82:{t:'Averse puternice', i:'cloud-rain'},
+  95:{t:'Furtună', i:'cloud-lightning'},96:{t:'Furtună cu grindină', i:'cloud-lightning'},99:{t:'Furtună puternică', i:'cloud-lightning'}
+};
+
+function toast(msg){ $('#toast-msg').textContent = msg; const t=$('#toast'); t.classList.remove('hidden'); setTimeout(()=>t.classList.add('hidden'), 2600); }
+function saveStores(){ localStorage.setItem('meteo_recent', JSON.stringify(recent.slice(0,8))); localStorage.setItem('meteo_fav', JSON.stringify(fav.slice(0,12))); }
+
+function addRecent(place){
+  recent = [place, ...recent.filter(r=> !(r.lat===place.lat && r.lon===place.lon))].slice(0,8);
+  saveStores(); renderRecents();
+}
+function toggleFav(){
+  const idx = fav.findIndex(f=> f.lat===state.lat && f.lon===state.lon);
+  if(idx>=0){ fav.splice(idx,1); toast('Eliminat de la favorite'); }
+  else { fav.unshift({...state}); toast('Adăugat la favorite ★'); }
+  saveStores(); renderFavs(); updateFavIcon();
+}
+function updateFavIcon(){
+  const isFav = fav.some(f=> f.lat===state.lat && f.lon===state.lon);
+  $('#fav-toggle').innerHTML = `<i data-lucide="${isFav?'star':'star'}" class="w-5 h-5 ${isFav?'fill-amber-400 text-amber-400':' '}"></i>`;
+  lucide.createIcons();
+}
+
+function renderRecents(){
+  const mk = (arr) => arr.map(p=>`<button class="chip" data-lat="${p.lat}" data-lon="${p.lon}" data-name="${p.name}">${p.name}</button>`).join('');
+  $('#recent-list').innerHTML = mk(recent);
+  $('#recent-list-mobile').innerHTML = mk(recent);
+  $('#recent-list').onclick = $('#recent-list-mobile').onclick = e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    setPlace({name:b.dataset.name, lat:+b.dataset.lat, lon:+b.dataset.lon});
+  };
+}
+function renderFavs(){
+  if(!fav.length){ $('#fav-list').innerHTML = `<p class="text-[13px] text-slate-400">Niciun favorit. Apasă ★ pentru a salva orașul curent.</p>`; return; }
+  $('#fav-list').innerHTML = fav.map(p=>`<button class="chip ${p.lat===state.lat && p.lon===state.lon?'active':''}" data-lat="${p.lat}" data-lon="${p.lon}" data-name="${p.name}">${p.name}</button>`).join('');
+  $('#fav-list').onclick = e=>{ const b=e.target.closest('button'); if(!b) return; setPlace({name:b.dataset.name, lat:+b.dataset.lat, lon:+b.dataset.lon}); };
+}
+
+const popular = [
+  {name:'București', lat:44.4268, lon:26.1025},{name:'Cluj-Napoca', lat:46.7712, lon:23.6236},
+  {name:'Timișoara', lat:45.7489, lon:21.2087},{name:'Iași', lat:47.1585, lon:27.6014},
+  {name:'Constanța', lat:44.1598, lon:28.6348},{name:'Brașov', lat:45.6427, lon:25.5887},
+  {name:'Sibiu', lat:45.7973, lon:24.1514},{name:'Oradea', lat:47.0722, lon:21.9211},
+];
+$('#popular-cities').innerHTML = popular.map(c=>`<button class="chip w-full text-left" data-lat="${c.lat}" data-lon="${c.lon}" data-name="${c.name}">${c.name}</button>`).join('');
+$('#popular-cities').onclick = e=>{ const b=e.target.closest('button'); if(!b) return; setPlace({name:b.dataset.name, lat:+b.dataset.lat, lon:+b.dataset.lon}); };
+
+let searchTimer;
+const inp = $('#search-input'), sug = $('#suggestions'), clr = $('#clear-search');
+inp.addEventListener('input', ()=>{
+  const q = inp.value.trim();
+  clr.classList.toggle('hidden', !q);
+  clearTimeout(searchTimer);
+  if(q.length<2){ sug.classList.add('hidden'); return; }
+  searchTimer = setTimeout(()=> doSearch(q), 220);
+});
+inp.addEventListener('keydown', e=>{
+  if(e.key==='Enter'){ const first = sug.querySelector('button'); if(first) first.click(); }
+  if(e.key==='Escape'){ sug.classList.add('hidden'); }
+});
+clr.onclick=()=>{ inp.value=''; clr.classList.add('hidden'); sug.classList.add('hidden'); inp.focus(); };
+document.addEventListener('click', e=>{ if(!e.target.closest('#suggestions') && e.target!==inp) sug.classList.add('hidden'); });
+
+async function doSearch(q){
+  try{
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=8&language=ro&countryCode=RO`;
+    const r = await fetch(url); const j = await r.json();
+    const items = (j.results||[]).map(p=>({
+      name:p.name, admin1:p.admin1, lat:p.latitude, lon:p.longitude, country:p.country_code
+    }));
+    if(!items.length){ sug.innerHTML = `<div class="p-4 text-sm text-slate-400">Niciun rezultat</div>`; sug.classList.remove('hidden'); return; }
+    sug.innerHTML = items.map(it=>`
+      <button class="w-full text-left px-4 py-3 hover:bg-white/5 flex items-center gap-3 transition" data-lat="${it.lat}" data-lon="${it.lon}" data-name="${it.name}">
+        <div class="h-9 w-9 grid place-items-center rounded-xl bg-white/5 border border-white/10"><i data-lucide="map-pin" class="w-4 h-4"></i></div>
+        <div><div class="font-medium">${it.name}</div><div class="text-xs text-slate-400">${it.admin1||''} · ${it.country||'RO'}</div></div>
+      </button>`).join('');
+    lucide.createIcons(); sug.classList.remove('hidden');
+    sug.onclick = e=>{ const b=e.target.closest('button'); if(!b) return; sug.classList.add('hidden'); inp.blur(); setPlace({name:b.dataset.name, lat:+b.dataset.lat, lon:+b.dataset.lon}); };
+  }catch{ toast('Eroare căutare'); }
+}
+
+async function setPlace(p){
+  state = {...state, ...p}; $('#city-name').textContent = p.name; $('#country-badge').textContent = 'RO';
+  addRecent({name:p.name, lat:p.lat, lon:p.lon}); updateFavIcon(); await loadWeather();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+async function loadWeather(){
+  $('#current-card').classList.add('shimmer');
+  try{
+    // API modificat: Adaugat precipitation_sum la nivel zilnic
+    const wx = `https://api.open-meteo.com/v1/forecast?latitude=${state.lat}&longitude=${state.lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m,wind_direction_10m,pressure_msl&hourly=temperature_2m,weather_code,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,precipitation_probability_max,precipitation_sum&timezone=auto&forecast_days=7`;
+    const aq = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${state.lat}&longitude=${state.lon}&current=us_aqi,pm2_5,pm10,european_aqi`;
+    const [w,a] = await Promise.all([fetch(wx).then(r=>r.json()), fetch(aq).then(r=>r.json()).catch(()=>null)]);
+
+    const c = w.current, d = w.daily, h = w.hourly;
+    const code = c.weather_code; const info = weatherCodes[code]||{t:'—',i:'cloud'};
+    $('#temp-big').textContent = Math.round(c.temperature_2m)+'°';
+    $('#condition').textContent = info.t;
+    $('#high-low').textContent = `Max ${Math.round(d.temperature_2m_max[0])}° • Min ${Math.round(d.temperature_2m_min[0])}°`;
+    $('#feels-like').textContent = Math.round(c.apparent_temperature)+'°';
+    $('#humidity').textContent = Math.round(c.relative_humidity_2m)+'%';
+    $('#wind').textContent = Math.round(c.wind_speed_10m);
+    $('#wind-txt').textContent = degToDir(c.wind_direction_10m);
+    $('#wind-dir').style.transform = `rotate(${c.wind_direction_10m}deg)`;
+    $('#pressure').textContent = Math.round(c.pressure_msl);
+    $('#precip').textContent = (c.precipitation||0).toFixed(1);
+    $('#date-time').textContent = fmt.format(new Date());
+    $('#current-icon').innerHTML = `<i data-lucide="${info.i}" class="w-28 h-28 sm:w-32 sm:h-32 text-white drop-shadow-[0_8px_30px_rgba(56,189,248,.35)]"></i>`;
+    lucide.createIcons();
+
+    const bg = $('#current-bg');
+    const isDay = c.is_day===1;
+    bg.style.background = isDay ? 'radial-gradient(600px 200px at 70% 0%, rgba(56,189,248,.25), transparent), radial-gradient(400px 200px at 20% 0%, rgba(99,102,241,.2), transparent)' : 'radial-gradient(500px 200px at 70% 0%, rgba(2,132,199,.18), transparent)';
+
+    const hours = h.time.slice(0,24), temps = h.temperature_2m.slice(0,24);
+    drawHourly(hours, temps);
+    const scroll = $('#hourly-scroll');
+    scroll.innerHTML = hours.map((t,i)=>{
+      const dt = new Date(t); const hh = dt.getHours().toString().padStart(2,'0')+':00';
+      const ic = weatherCodes[h.weather_code[i]]?.i||'cloud';
+      const pr = h.precipitation_probability[i]||0;
+      return `<div class="shrink-0 w-[78px] rounded-2xl bg-white/5 border border-white/10 p-2.5 text-center hover:bg-white/10 transition">
+        <div class="text-[12px] text-slate-300">${hh}</div>
+        <div class="my-1.5 grid place-items-center h-8"><i data-lucide="${ic}" class="w-6 h-6"></i></div>
+        <div class="font-semibold">${Math.round(temps[i])}°</div>
+        <div class="text-[11px] mt-1 ${pr>30?'text-cyan-300':'text-slate-400'}">${pr}%</div>
+      </div>`;
+    }).join(''); lucide.createIcons();
+
+    // Actualizat Daily pentru afisarea precipitatiilor in MM
+    const days = d.time.map((t,i)=>{
+      const date = new Date(t); const name = new Intl.DateTimeFormat('ro-RO',{weekday:'short'}).format(date);
+      const ic = weatherCodes[d.weather_code[i]]?.i||'cloud';
+      const max = Math.round(d.temperature_2m_max[i]); const min = Math.round(d.temperature_2m_min[i]);
+      const pr = d.precipitation_probability_max[i]||0;
+      const prSum = (d.precipitation_sum[i]||0).toFixed(1);
+
+      return `<div class="flex items-center gap-3 py-3">
+        <div class="w-14 text-[13px] text-slate-300">${i===0?'Azi':name}</div>
+        <div class="w-8 grid place-items-center"><i data-lucide="${ic}" class="w-5 h-5 text-slate-200"></i></div>
+        <div class="flex-1 flex flex-col justify-center">
+          <div class="flex items-center gap-2">
+            <div class="w-full h-1.5 rounded-full bg-white/10 overflow-hidden"><div class="h-full bg-gradient-to-r from-cyan-400 to-blue-500" style="width:${Math.min(100, pr)}%"></div></div>
+            <div class="text-[12px] w-10 text-right ${pr>30?'text-cyan-300':'text-slate-400'}">${pr}%</div>
+          </div>
+          <div class="text-[11px] text-slate-400 mt-0.5">${prSum} mm precipitații</div>
+        </div>
+        <div class="w-24 text-right"><span class="font-semibold">${max}°</span> <span class="text-slate-400">/${min}°</span></div>
+      </div>`;
+    }).join('');
+    $('#daily-list').innerHTML = days; lucide.createIcons();
+
+    const sr = new Date(d.sunrise[0]), ss = new Date(d.sunset[0]);
+    $('#sunrise').textContent = shortFmt.format(sr); $('#sunset').textContent = shortFmt.format(ss);
+    const dl = (ss - sr)/60000; const dh = Math.floor(dl/60), dm = Math.round(dl%60);
+    $('#day-length').textContent = `${dh}h ${dm}m`;
+    const now = Date.now(); const prog = Math.max(0, Math.min(1, (now - sr)/(ss - sr)));
+    const arcLen = 440; $('#sun-arc').setAttribute('stroke-dashoffset', 440 - 440*prog);
+    const angle = Math.PI*(1-prog); const cx = 150 + 140*Math.cos(angle), cy = 90 - 80*Math.sin(angle);
+    $('#sun-dot').setAttribute('cx', cx); $('#sun-dot').setAttribute('cy', cy);
+
+    if(a && a.current){
+      const aqi = a.current.us_aqi ?? a.current.european_aqi ?? 0;
+      $('#aqi-value').textContent = Math.round(aqi);
+      $('#pm25').textContent = a.current.pm2_5?.toFixed(1) ?? '—';
+      $('#pm10').textContent = a.current.pm10?.toFixed(1) ?? '—';
+      const pct = Math.max(0, Math.min(1, aqi/150));
+      const off = 264 - 264*pct;
+      $('#aqi-ring').setAttribute('stroke-dashoffset', off);
+      const status = aqi<=50?'Bun':aqi<=100?'Moderat':aqi<=150?'Nesănătos sensibil':'Nesănătos';
+      $('#aqi-status').textContent = status;
+      $('#aqi-ring').setAttribute('stroke', aqi<=50?'#22d3ee':aqi<=100?'#fbbf24':aqi<=150?'#fb923c':'#ef4444');
+    }
+
+  }catch(e){ console.error(e); toast('Nu am putut încărca datele meteo'); }
+  finally{ $('#current-card').classList.remove('shimmer'); }
+}
+
+function drawHourly(labels, data){
+  const ctx = $('#hourlyChart').getContext('2d');
+  const grad = ctx.createLinearGradient(0,0,0,110); grad.addColorStop(0,'rgba(56,189,248,.45)'); grad.addColorStop(1,'rgba(56,189,248,0)');
+  if(hourlyChart) hourlyChart.destroy();
+  hourlyChart = new Chart(ctx, {
+    type:'line',
+    data:{ labels: labels.map(t=> new Date(t).getHours()+':00'), datasets:[{ data, borderColor:'#38bdf8', backgroundColor:grad, fill:true, tension:.38, borderWidth:2, pointRadius:0 }] },
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false}, tooltip:{enabled:false} }, scales:{ x:{display:false}, y:{display:false} }, elements:{ line:{cap:'round'} } }
+  });
+}
+function degToDir(d){ const dirs=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSV','SV','VSV','V','VNV','NV','NNV']; return dirs[Math.round(d/22.5)%16]; }
+
+// Endpoint actualizat hub.meteoalarm.org pentru a repara citirea codurilor
+async function loadANM(){
+  const box = $('#anm-warnings'); box.innerHTML = `<div class="animate-pulse h-14 rounded-xl bg-white/5"></div><div class="animate-pulse h-14 rounded-xl bg-white/5"></div>`;
+  try{
+    const url = 'https://api.allorigins.win/get?url='+encodeURIComponent('https://hub.meteoalarm.org/api/v1/warnings/feeds-romania');
+    const r = await fetch(url);
+    const { contents } = await r.json(); const data = JSON.parse(contents);
+    const warns = (data.warnings||[]).slice(0,4);
+    
+    if(!warns.length) {
+      box.innerHTML = `<div class="p-3 rounded-xl bg-green-500/10 border border-green-500/25 text-[13px] text-green-200 flex items-center gap-2"><i data-lucide="check-circle" class="w-4 h-4"></i>Nicio avertizare meteo activă momentan.</div>`;
+      lucide.createIcons();
+      return;
+    }
+    
+    box.innerHTML = warns.map(w=>{
+      const sev = (w.severity||'').toLowerCase(); const color = sev.includes('red')?'red':sev.includes('orange')?'amber':sev.includes('yellow')?'yellow':'slate';
+      const area = w.area?.areaDesc || 'România';
+      const type = w.event || 'Avertizare meteo';
+      const from = w.onset ? new Date(w.onset).toLocaleString('ro-RO',{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}) : '';
+      const to = w.expires ? new Date(w.expires).toLocaleString('ro-RO',{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}) : '';
+      return `<div class="p-3 rounded-xl border bg-${color}-500/10 border-${color}-500/25">
+        <div class="flex items-center justify-between gap-2">
+          <div class="text-[13px] font-medium text-${color}-200 flex items-center gap-1.5"><i data-lucide="triangle-alert" class="w-4 h-4"></i>${type}</div>
+          <span class="text-[11px] px-2 py-0.5 rounded-full bg-black/30 border border-white/10 truncate max-w-[120px]" title="${area}">${area}</span>
+        </div>
+        <div class="mt-1 text-[12px] text-slate-300">${from} → ${to}</div>
+      </div>`;
+    }).join('');
+    box.innerHTML += `<div class="hidden bg-red-500/10 border-red-500/25 text-red-200 bg-amber-500/10 border-amber-500/25 text-amber-200 bg-yellow-500/10 border-yellow-500/25 text-yellow-200 bg-green-500/10 border-green-500/25 text-green-200"></div>`;
+  }catch{
+    box.innerHTML = `<div class="p-3 rounded-xl bg-white/5 border border-white/10 text-[13px] text-slate-300">
+      Avertizările nu au putut fi încărcate. <br><a class="text-amber-300 underline mt-1 inline-block" href="https://www.meteoalarm.org/ro/" target="_blank">Vezi avertizări Meteoalarm</a>
+    </div>`;
+  }
+  lucide.createIcons();
+}
+
+$('#refresh-anm').onclick = loadANM;
+
+// Modificat apelul API pentru locație - obține corect numele orașului tău
+$('#locate-btn').onclick = ()=>{
+  if(!navigator.geolocation){ toast('Geolocație indisponibilă'); return; }
+  toast('Se obține locația...');
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    const {latitude, longitude} = pos.coords;
+    try{
+      const r = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=ro`);
+      const j = await r.json(); 
+      const cityName = j.city || j.locality || 'Locația mea';
+      setPlace({ name: cityName, lat: latitude, lon: longitude });
+      toast('Locație actualizată');
+    }catch{ setPlace({name:'Locația mea', lat:latitude, lon:longitude}); }
+  }, ()=> toast('Permisiune locație refuzată'), { enableHighAccuracy:true, timeout:8000 });
+};
+$('#fav-toggle').onclick = toggleFav;
+$('#show-fav-mobile').onclick = ()=>{ document.querySelector('aside').scrollIntoView({behavior:'smooth', block:'start'}); };
+
+function init(){
+  lucide.createIcons();
+  renderRecents(); renderFavs(); updateFavIcon();
+  const last = recent[0]; if(last) state = {...state, ...last};
+  $('#city-name').textContent = state.name;
+  loadWeather(); loadANM();
+  setInterval(()=> $('#date-time').textContent = fmt.format(new Date()), 30000);
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
